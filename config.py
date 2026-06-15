@@ -21,8 +21,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = int(os.environ.get('TELEGRAM_CHAT_ID', '6104346726'))
 
 # ── Binance ───────────────────────────────────────────────────────────────────
-BINANCE_WS_URL = "wss://stream.binance.com:9443/stream"
-BINANCE_REST_URL = "https://api.binance.com/api/v3"
+BINANCE_WS_URL = "wss://stream.binance.us:9443/stream"
+BINANCE_REST_URL = "https://api.binance.us/api/v3"
 
 # ── Polymarket APIs ───────────────────────────────────────────────────────────
 GAMMA_API = "https://gamma-api.polymarket.com"
