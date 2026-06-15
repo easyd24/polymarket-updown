@@ -277,7 +277,10 @@ async def _show_history(query):
                 f"{t.get('result', 'pending')} {pnl_str}\n"
             )
     
-    await query.edit_message_text(text, parse_mode="Markdown")
+    buttons = [[InlineKeyboardButton("← Back", callback_data="menu_back")]]
+    await query.edit_message_text(
+        text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown"
+    )
 
 
 async def _toggle_series(query, data):
