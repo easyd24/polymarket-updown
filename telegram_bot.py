@@ -361,18 +361,21 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
     text += "\n"
     
     if _auto_trade and edge.is_tradeable:
-        text += f"🤖 Auto-trading: {'ON (Paper 📝)' if _paper_trade else 'ON (Live 💰)'}\n"
+        text += f"🤖 Auto-trade: {'Paper 📝' if _paper_trade else 'Live 💰'}\n"
     else:
-        text += f"🤖 Auto-trading: OFF\n"
+        text += f"🤖 Auto-trade: OFF\n"
     
-    # Build inline keyboard (Buy button when auto-trade is off)
+    # Always show Buy button for tradeable edges — lets user manually confirm
     reply_markup = None
-    if not _auto_trade and edge.is_tradeable:
+    if edge.is_tradeable:
         price_str = _fmt_price(getattr(m, f'{edge.direction.lower()}_price'))
+        label = f"Buy {edge.direction} @ {price_str}"
+        if _auto_trade:
+            label = f"✅ Confirm {edge.direction} @ {price_str}"
         button = {
             "inline_keyboard": [[
                 {
-                    "text": f"Buy {edge.direction} @ {price_str}",
+                    "text": label,
                     "callback_data": f"buy_{m.slug}_{edge.direction.lower()}"
                 }
             ]]
