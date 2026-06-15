@@ -391,22 +391,33 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
     else:
         text += f"🤖 Auto-trade: OFF\n"
     
-    # Always show Buy button for tradeable edges — lets user manually confirm
+    # Always show Buy button + Polymarket link for tradeable edges
     reply_markup = None
+    buttons = []
+    
     if edge.is_tradeable:
         price_str = _fmt_price(getattr(m, f'{edge.direction.lower()}_price'))
         label = f"Buy {edge.direction} @ {price_str}"
         if _auto_trade:
             label = f"✅ Confirm {edge.direction} @ {price_str}"
-        button = {
-            "inline_keyboard": [[
-                {
-                    "text": label,
-                    "callback_data": f"buy_{m.slug}_{edge.direction.lower()}"
-                }
-            ]]
-        }
-        reply_markup = json.dumps(button)
+        buttons.append([{
+            "text": label,
+            "callback_data": f"buy_{m.slug}_{edge.direction.lower()}"
+        }])
+    
+    # Polymarket link button
+    pm_url = f"https://polymarket.com/event/{m.event_slug}" if m.event_slug else ""
+    if not pm_url:
+        # Fallback: try slug-based URL
+        pm_url = f"https://polymarket.com/event/{m.slug}"
+    if pm_url:
+        buttons.append([{
+            "text": "🌐 View on Polymarket",
+            "url": pm_url
+        }])
+    
+    if buttons:
+        reply_markup = json.dumps({"inline_keyboard": buttons})
     
     # Send via direct HTTP POST (thread-safe, no event loop needed)
     try:

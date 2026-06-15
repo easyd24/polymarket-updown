@@ -25,6 +25,7 @@ class Market:
     event_start_time: Optional[datetime] = None  # Window start (UTC)
     end_date: Optional[datetime] = None           # Window end (UTC)
     resolution_source: str = ""  # "chainlink_streams", "binance", or "unknown"
+    event_slug: str = ""        # For Polymarket URL: polymarket.com/event/{event_slug}
     price_to_beat: Optional[float] = None  # Price at window start
     active: bool = True
 

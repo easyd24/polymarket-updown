@@ -141,11 +141,12 @@ def discover_markets(force_refresh: bool = False) -> list[Market]:
         events = get_series_events(series_slug)
         
         for event in events:
+            event_slug = event.get("slug", "")
             event_markets = event.get("markets", [])
             
             for m in event_markets:
                 try:
-                    market = _parse_market(m, series_slug)
+                    market = _parse_market(m, series_slug, event_slug=event_slug)
                     if market and market.active and market.liquidity >= min_liquidity:
                         # Only include markets that haven't expired
                         if market.end_date and market.end_date > now:
@@ -162,7 +163,7 @@ def discover_markets(force_refresh: bool = False) -> list[Market]:
     return list(markets.values())
 
 
-def _parse_market(m: dict, series_slug: str) -> Optional[Market]:
+def _parse_market(m: dict, series_slug: str, event_slug: str = "") -> Optional[Market]:
     """Parse a Gamma API market dict into a Market object."""
     try:
         slug = m.get("slug", "")
@@ -276,6 +277,7 @@ def _parse_market(m: dict, series_slug: str) -> Optional[Market]:
             event_start_time=event_start_time,
             end_date=end_date,
             resolution_source=resolution_source,
+            event_slug=event_slug,
             active=m.get("active", True),
         )
     except Exception as e:
