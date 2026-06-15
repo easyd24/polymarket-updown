@@ -80,8 +80,11 @@ class EdgeResult:
 
     @property
     def is_tradeable(self) -> bool:
-        """Whether this edge meets minimum thresholds."""
-        return self.edge_pp >= config.MIN_EDGE_PP and self.confidence >= config.MIN_CONFIDENCE
+        """Whether this edge meets minimum thresholds.
+        
+        Uses abs(edge_pp) so Down edges (negative edge_pp) are also tradeable.
+        """
+        return abs(self.edge_pp) >= config.MIN_EDGE_PP and self.confidence >= config.MIN_CONFIDENCE
 
 
 @dataclass

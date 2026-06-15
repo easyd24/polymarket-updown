@@ -89,16 +89,17 @@ def calculate_edge(market: Market) -> EdgeResult | None:
     if abs(change_since_start_pct) < min_move:
         return None  # Move too small — noise, not signal
     
+    # ── Get market-implied probability ───────────────────────────────────
+    market_p_up = market.up_price
+    
     # ── Estimate true probability of "Up" ────────────────────────────────
     p_up = _estimate_p_up(
         change_pct=change_since_start_pct,
         momentum=momentum,
         timeframe=timeframe,
         time_remaining_pct=market.time_remaining_pct,
+        market_p_up=market_p_up,
     )
-    
-    # ── Get market-implied probability ───────────────────────────────────
-    market_p_up = market.up_price
     
     # ── Calculate edge ───────────────────────────────────────────────────
     edge_pp = (p_up - market_p_up) * 100  # in percentage points
@@ -150,54 +151,93 @@ def calculate_edge(market: Market) -> EdgeResult | None:
 
 
 def _estimate_p_up(change_pct: float, momentum: dict, timeframe: str,
-                    time_remaining_pct: float) -> float:
+                    time_remaining_pct: float, market_p_up: float = 0.5) -> float:
     """Estimate the true probability of "Up" winning.
     
-    The model is deliberately conservative:
-    - Small moves (<1%) barely shift probability from 50%
+    The model is deliberately conservative and anchors to the market price:
+    - Small moves (<1%) barely shift probability from the market's estimate
+    - The market price is used as a prior — we blend model estimate with it
     - Only large, sustained moves (>1.5%) create strong signals
     - 4h+ timeframes apply mean reversion for extreme moves
+    - Tail markets (priced <25¢ or >75¢) have dampened adjustments
     """
-    # Base rate
-    p = 0.50
+    # Base rate: start from market-implied probability, NOT 50/50
+    # The market has real money at stake and better information than us.
+    # Our model can only shift probability so far from this anchor.
+    p = market_p_up
     
-    # ── Move-based probability ──────────────────────────────────────────────
-    # The actual price change since window start is the primary signal.
-    # Scale: tiny moves barely move P, large moves shift it significantly.
-    # Using a logistic-style curve that maxes out at ~85% for 3%+ moves.
+    # ── How much to trust our model vs the market ───────────────────────────
+    # Trust scales with move size. A tiny 0.3% move is mostly noise —
+    # the market is probably right. A 2%+ move is a real signal.
     abs_move = abs(change_pct)
     direction_sign = 1.0 if change_pct > 0 else -1.0
     
     if abs_move < 0.5:
+        trust = 0.15   # Sub-0.5% move: barely shift from market price
+    elif abs_move < 1.0:
+        trust = 0.25   # 0.5-1%: modest trust in our estimate
+    elif abs_move < 2.0:
+        trust = 0.40   # 1-2%: moderate trust
+    else:
+        trust = 0.55   # 2%+: strong signal, but never 100% trust
+    
+    # ── Tail market dampening ──────────────────────────────────────────────
+    # Markets priced <25¢ or >75¢ are tails — the market knows something.
+    # Our model should NOT claim P(Up)=44% when the market says 14¢.
+    # Reduce trust significantly for tail markets.
+    if market_p_up < 0.25 or market_p_up > 0.75:
+        trust *= 0.5  # Half trust in tails — they're priced that way for a reason
+    
+    # ── Move-based probability shift ──────────────────────────────────────
+    # This is the model's estimate of how much the probability should shift
+    # from 50/50, BEFORE blending with the market prior.
+    if abs_move < 0.5:
         # Sub-0.5% move: barely shifts from 50/50 — max ±3pp
-        move_adj = abs_move * 0.06  # 0.3% move → ±1.8pp
+        model_adj = abs_move * 0.06  # 0.3% move → ±1.8pp
     elif abs_move < 1.0:
         # 0.5-1% move: moderate signal — ±3 to ±8pp
-        move_adj = 0.03 + (abs_move - 0.5) * 0.10  # 0.5% → 3pp, 1% → 8pp
+        model_adj = 0.03 + (abs_move - 0.5) * 0.10  # 0.5% → 3pp, 1% → 8pp
     elif abs_move < 2.0:
         # 1-2% move: strong signal — ±8 to ±18pp
-        move_adj = 0.08 + (abs_move - 1.0) * 0.10  # 1% → 8pp, 2% → 18pp
+        model_adj = 0.08 + (abs_move - 1.0) * 0.10  # 1% → 8pp, 2% → 18pp
     else:
         # 2%+ move: very strong signal — ±18 to ±30pp (capped)
-        move_adj = 0.18 + min(0.12, (abs_move - 2.0) * 0.06)  # 2% → 18pp, 4% → 30pp
+        model_adj = 0.18 + min(0.12, (abs_move - 2.0) * 0.06)  # 2% → 18pp, 4% → 30pp
     
-    p += direction_sign * move_adj
+    # ── Tail market: cap model adjustment ──────────────────────────────────
+    # In a 14¢ market, even an 18pp model shift is too much — it would push
+    # P(Up) to 32¢ when reality is the market knows it's unlikely.
+    # For tails, cap the model adjustment to a smaller range.
+    if market_p_up < 0.20:
+        model_adj = min(model_adj, 0.10)  # Max 10pp shift in deep tails
+    elif market_p_up < 0.30:
+        model_adj = min(model_adj, 0.15)  # Max 15pp shift in moderate tails
+    elif market_p_up > 0.80:
+        model_adj = min(model_adj, 0.10)  # Max 10pp shift in deep tails (Down side)
+    elif market_p_up > 0.70:
+        model_adj = min(model_adj, 0.15)  # Max 15pp shift in moderate tails
+    
+    # ── Blend model estimate with market prior ─────────────────────────────
+    # Instead of: p = 0.50 + direction_sign * model_adj
+    # We blend: p = (0.50 + model_shift) * trust + market_p_up * (1 - trust)
+    model_p = 0.50 + direction_sign * model_adj
     
     # ── Momentum reinforcement ──────────────────────────────────────────────
-    # If recent momentum agrees with the move, boost it slightly.
-    # If momentum disagrees, the signal is weak — a recovering price after
-    # a drop is NOT a strong "Up" signal (or vice versa).
+    # If recent momentum agrees with the move, boost model estimate slightly.
+    # If momentum disagrees, reduce model estimate — signal is unreliable.
     momentum_dir = momentum.get("direction", "flat")
     momentum_strength = momentum.get("strength", 0)
     
     if momentum_dir == "up" and change_pct > 0:
-        p += 0.02 * momentum_strength  # Small boost for confirming momentum
+        model_p += 0.02 * momentum_strength  # Small boost for confirming momentum
     elif momentum_dir == "down" and change_pct < 0:
-        p += 0.02 * momentum_strength
+        model_p += 0.02 * momentum_strength
     elif momentum_dir in ("up", "down") and direction_sign != (1.0 if momentum_dir == "up" else -1.0):
         # Momentum disagrees with the window change — signal is unreliable
-        # A price that dropped then recovered is NOT a strong directional bet
-        p -= 0.04 * momentum_strength  # 4x penalty vs 2x boost for agreement
+        model_p -= 0.04 * momentum_strength  # 4x penalty vs 2x boost for agreement
+    
+    # ── Blend with market prior ────────────────────────────────────────────
+    p = model_p * trust + market_p_up * (1 - trust)
     
     # ── Mean reversion (4h and daily only) ────────────────────────────────
     if timeframe in ("4h", "daily") and abs_move > config.MEAN_REVERSION_THRESHOLD * 100:
@@ -215,8 +255,16 @@ def _estimate_p_up(change_pct: float, momentum: dict, timeframe: str,
     elif time_remaining_pct > 0.8:
         p = 0.50 + (p - 0.50) * 0.85
     
-    # ── Clamp ──────────────────────────────────────────────────────────────
-    p = max(0.10, min(0.90, p))
+    # ── Market-price floor ──────────────────────────────────────────────────
+    # Never estimate P(Up) below 0.05 or above 0.95 — we can never be that
+    # certain about a crypto prediction. In tail markets (<0.20 or >0.80),
+    # don't shift more than 15pp from the market price.
+    if market_p_up < 0.20:
+        p = max(0.05, min(p, market_p_up + 0.15))  # Deep tail: max +15pp from market
+    elif market_p_up > 0.80:
+        p = max(market_p_up - 0.15, min(p, 0.95))  # Deep tail: max +15pp from market
+    else:
+        p = max(0.05, min(0.95, p))  # General bounds
     
     return p
 
