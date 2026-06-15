@@ -24,6 +24,15 @@ def calculate_edge(market: Market) -> EdgeResult | None:
     coin = market.coin
     timeframe = market.timeframe
     
+    # ── Skip illiquid markets ──────────────────────────────────────────────
+    if market.volume_24h < config.MIN_VOLUME_24H:
+        return None
+    if market.liquidity < config.SERIES.get(market.series_slug, {}).get("min_liquidity", 100):
+        return None
+    # Skip markets where both sides are at 50/50 (no market opinion yet)
+    if 0.48 < market.up_price < 0.52 and market.volume_24h < 500:
+        return None
+    
     # ── Get exchange data ─────────────────────────────────────────────────
     current_price = price_feed.get_price(coin)
     if current_price <= 0:

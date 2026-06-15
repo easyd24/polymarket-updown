@@ -25,6 +25,9 @@ _auto_trade = config.AUTO_TRADE_ENABLED
 _paper_trade = config.PAPER_TRADE
 _scan_paused = False
 
+# Application instance — set by run_bot()
+_app = None
+
 
 def _fmt_price(price: float) -> str:
     """Format price as cents: 0.48 → '48¢'."""
@@ -117,6 +120,7 @@ async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Pause/resume scanning."""
     global _scan_paused
     _scan_paused = not _scan_paused
+    eng_module._scan_paused = _scan_paused
     status = "PAUSED ⏸️" if _scan_paused else "RESUMED ▶️"
     await update.message.reply_text(f"Scanning {status}")
 
@@ -248,8 +252,8 @@ def _get_balance():
 
 # ── Alert Functions ───────────────────────────────────────────────────────────
 
-async def send_opportunity_alert(edge: EdgeResult, chat_id: int = None):
-    """Send an opportunity alert to Telegram."""
+def send_alert_sync(edge: EdgeResult, chat_id: int = None):
+    """Send an alert from a background thread — uses direct HTTP to avoid event loop issues."""
     chat_id = chat_id or config.TELEGRAM_CHAT_ID
     m = edge.market
     
@@ -274,52 +278,32 @@ async def send_opportunity_alert(edge: EdgeResult, chat_id: int = None):
     else:
         text += f"🤖 Auto-trading: OFF\n"
     
-    # Keyboard with Buy button (if auto-trade is off)
-    keyboard = None
-    if not _auto_trade and edge.is_tradeable:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                f"Buy {edge.direction} @ {_fmt_price(getattr(m, f'{edge.direction.lower()}_price'))}",
-                callback_data=f"buy_{m.slug}_{edge.direction.lower()}"
-            ),
-        ]])
-    
-    # Send via bot
+    # Send via direct HTTP POST (thread-safe, no event loop needed)
     try:
-        import asyncio
-        from telegram import Bot
-        bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-        asyncio.run(bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-        ))
+        import httpx
+        url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+        resp = httpx.post(url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            print(f"[telegram_bot] Alert sent: {m.coin.upper()} {m.timeframe} {edge.direction}")
+        else:
+            print(f"[telegram_bot] Alert HTTP error: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         print(f"[telegram_bot] Alert send error: {e}")
-
-
-def send_alert_sync(edge: EdgeResult, chat_id: int = None):
-    """Synchronous wrapper for send_opportunity_alert."""
-    import asyncio
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # We're inside an async context, schedule it
-            asyncio.ensure_future(send_opportunity_alert(edge, chat_id))
-        else:
-            loop.run_until_complete(send_opportunity_alert(edge, chat_id))
-    except RuntimeError:
-        # No event loop, create one
-        asyncio.run(send_opportunity_alert(edge, chat_id))
 
 
 # ── Bot Runner ────────────────────────────────────────────────────────────────
 
 def run_bot():
     """Start the Telegram bot (blocking)."""
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    global _app
+    _app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     
+    app = _app
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("pause", cmd_pause))

@@ -33,6 +33,7 @@ _daily_reset = datetime.now(timezone.utc).date()
 _auto_trade_enabled = config.AUTO_TRADE_ENABLED
 _paper_trade = config.PAPER_TRADE
 _alert_callback = None  # Set by telegram_bot to avoid circular import
+_scan_paused = False
 
 # ── Data Persistence ───────────────────────────────────────────────────────────
 DATA_DIR = config.DATA_DIR
@@ -170,6 +171,11 @@ def scan_loop():
     
     while True:
         try:
+            # ── Check pause state ────────────────────────────────────────────
+            if _scan_paused:
+                time.sleep(5)
+                continue
+            
             now = time.time()
             
             # ── Refresh market list periodically ────────────────────────────
