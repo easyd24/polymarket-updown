@@ -106,7 +106,11 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "No trades yet\n"
     else:
         for t in trades:
-            pnl_str = f"+{_fmt_usd(t['pnl'])}" if t.get('pnl', 0) >= 0 else _fmt_usd(t.get('pnl', 0))
+            pnl = t.get('pnl')
+            if pnl is not None:
+                pnl_str = f"+{_fmt_usd(pnl)}" if pnl >= 0 else _fmt_usd(pnl)
+            else:
+                pnl_str = "pending"
             text += (
                 f"• {t['coin'].upper()} {t['timeframe']} "
                 f"{t['direction']} @ {_fmt_price(t['price'])} → "
@@ -203,7 +207,11 @@ async def _show_history(query):
         text += "No trades yet\n"
     else:
         for t in trades:
-            pnl_str = f"+{_fmt_usd(t['pnl'])}" if t.get('pnl', 0) >= 0 else _fmt_usd(t.get('pnl', 0))
+            pnl = t.get('pnl')
+            if pnl is not None:
+                pnl_str = f"+{_fmt_usd(pnl)}" if pnl >= 0 else _fmt_usd(pnl)
+            else:
+                pnl_str = "pending"
             text += (
                 f"• {t['coin'].upper()} {t['timeframe']} "
                 f"{t['direction']} @ {_fmt_price(t['price'])} → "
