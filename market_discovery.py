@@ -72,13 +72,23 @@ def _parse_coin(slug: str, tags: list[str] = None) -> str:
     return "unknown"
 
 
-def _parse_resolution_source(slug: str, tags: list[str] = None) -> str:
-    """Determine resolution source from timeframe."""
-    tf = _parse_timeframe(tags or [])
+def _parse_resolution_source(slug: str, tags: list[str] = None, timeframe: str = None) -> str:
+    """Determine resolution source from coin and timeframe.
+    
+    All 15m and 4h markets resolve via Chainlink Data Streams (off-chain).
+    All 1h and daily markets resolve via Binance 1m candles.
+    
+    Note: "chainlink_streams" means we can't query the oracle via eth_call
+    for divergence checks — Data Streams are off-chain aggregated feeds.
+    """
+    # Use provided timeframe if available, otherwise parse from tags/slug
+    tf = timeframe or _parse_timeframe(tags or [])
+    
     if tf in ("5m", "15m", "4h"):
-        return "chainlink"
+        return "chainlink_streams"
     elif tf in ("1h", "daily"):
         return "binance"
+    
     return "unknown"
 
 
@@ -227,7 +237,6 @@ def _parse_market(m: dict, series_slug: str) -> Optional[Market]:
         # Calculate coin and timeframe
         coin = _parse_coin(series_slug, tags)
         timeframe = _parse_timeframe(tags)
-        resolution_source = _parse_resolution_source(series_slug, tags)
         
         # If timeframe unknown from tags, try from slug
         if timeframe == "unknown":
@@ -241,6 +250,15 @@ def _parse_market(m: dict, series_slug: str) -> Optional[Market]:
                 timeframe = "4h"
             elif "-daily" in slug or "-daily" in series_slug:
                 timeframe = "daily"
+        
+        # Resolution source depends on timeframe (now resolved)
+        resolution_source = _parse_resolution_source(series_slug, tags, timeframe=timeframe)
+        # Override if we got timeframe from slug but resolution is still unknown
+        if resolution_source == "unknown" and timeframe != "unknown":
+            if timeframe in ("5m", "15m", "4h"):
+                resolution_source = "chainlink_streams"
+            elif timeframe in ("1h", "daily"):
+                resolution_source = "binance"
         
         return Market(
             slug=slug,

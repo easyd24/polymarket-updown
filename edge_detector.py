@@ -63,13 +63,18 @@ def calculate_edge(market: Market) -> EdgeResult | None:
         price_to_beat = current_price / (1 + change_since_start_pct / 100)
     
     # ── Chainlink oracle divergence ────────────────────────────────────────
-    # 15m & 1h markets resolve via Chainlink, not Binance.
-    # If Chainlink and Binance diverge, our edge calculation may be wrong.
-    chainlink_result = price_feed.get_chainlink_price(coin)
+    # Short timeframes resolve via Chainlink Data Streams (off-chain).
+    # For BTC/ETH we can still check on-chain Chainlink feeds for divergence.
+    # For SOL/XRP there are no on-chain feeds, so divergence = 0.
     chainlink_divergence = 0.0  # % difference: positive = Chainlink > Binance
     
-    if chainlink_result:
-        chainlink_price, chainlink_divergence = chainlink_result
+    if market.resolution_source == "chainlink_streams" and coin in ("btc", "eth"):
+        # BTC/ETH have on-chain Chainlink feeds we can query for divergence
+        chainlink_result = price_feed.get_chainlink_price(coin)
+        if chainlink_result:
+            _, chainlink_divergence = chainlink_result
+    # For SOL/XRP and all other coins, no on-chain Chainlink feed available
+    # divergence stays 0 — we rely solely on Binance momentum
     
     # ── Minimum move threshold ────────────────────────────────────────────
     # Small moves are noise, not signal. Don't fire on sub-0.5% drift.

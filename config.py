@@ -31,16 +31,25 @@ CLOB_API = "https://clob.polymarket.com"
 # ── Series Configuration ─────────────────────────────────────────────────────
 # Each series has: enabled, max_stake_pct, min_liquidity, scan_interval
 SERIES = {
+    # BTC — Chainlink on-chain feeds available for divergence check
     "btc-up-or-down-5m":     {"enabled": False, "max_stake_pct": 2,  "min_liquidity": 500,  "scan_interval": 5},
     "btc-up-or-down-15m":    {"enabled": True,  "max_stake_pct": 3,  "min_liquidity": 500,  "scan_interval": 15},
     "btc-up-or-down-hourly": {"enabled": True,  "max_stake_pct": 5,  "min_liquidity": 200,  "scan_interval": 60},
     "btc-up-or-down-4h":     {"enabled": True,  "max_stake_pct": 5,  "min_liquidity": 100,  "scan_interval": 120},
     "btc-up-or-down-daily":  {"enabled": False, "max_stake_pct": 5,  "min_liquidity": 100,  "scan_interval": 300},
+    # ETH — Chainlink on-chain feeds available for divergence check
     "eth-up-or-down-5m":     {"enabled": False, "max_stake_pct": 2,  "min_liquidity": 300,  "scan_interval": 5},
     "eth-up-or-down-15m":    {"enabled": True,  "max_stake_pct": 3,  "min_liquidity": 300,  "scan_interval": 15},
     "eth-up-or-down-hourly": {"enabled": True,  "max_stake_pct": 5,  "min_liquidity": 100,  "scan_interval": 60},
     "eth-up-or-down-4h":     {"enabled": False, "max_stake_pct": 5,  "min_liquidity": 50,   "scan_interval": 120},
     "eth-up-or-down-daily":  {"enabled": False, "max_stake_pct": 5,  "min_liquidity": 50,   "scan_interval": 300},
+    # SOL — resolves via Chainlink Data Streams (off-chain), no on-chain feed
+    "sol-up-or-down-15m":    {"enabled": True,  "max_stake_pct": 3,  "min_liquidity": 300,  "scan_interval": 15},
+    "sol-up-or-down-4h":     {"enabled": True,  "max_stake_pct": 5,  "min_liquidity": 100,  "scan_interval": 120},
+    # XRP — resolves via Chainlink Data Streams (15m/4h), Binance (daily)
+    "xrp-up-or-down-15m":    {"enabled": True,  "max_stake_pct": 3,  "min_liquidity": 200,  "scan_interval": 15},
+    "xrp-up-or-down-4h":     {"enabled": True,  "max_stake_pct": 5,  "min_liquidity": 100,  "scan_interval": 120},
+    "xrp-up-or-down-daily":  {"enabled": False, "max_stake_pct": 5,  "min_liquidity": 50,   "scan_interval": 300},
 }
 
 # ── Edge Detection Parameters ─────────────────────────────────────────────────

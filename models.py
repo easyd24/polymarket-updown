@@ -24,7 +24,7 @@ class Market:
     volume_24h: float = 0.0      # 24h volume in $
     event_start_time: Optional[datetime] = None  # Window start (UTC)
     end_date: Optional[datetime] = None           # Window end (UTC)
-    resolution_source: str = ""  # "chainlink" or "binance"
+    resolution_source: str = ""  # "chainlink_streams", "binance", or "unknown"
     price_to_beat: Optional[float] = None  # Price at window start
     active: bool = True
 

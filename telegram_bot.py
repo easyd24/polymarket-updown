@@ -341,12 +341,22 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
         f"🔬 Confidence: {_fmt_pct(edge.confidence)}\n"
     )
     
-    # Show Chainlink divergence for 15m/1h markets (they resolve via Chainlink)
+    # Show Chainlink divergence for BTC/ETH markets that resolve via Chainlink Data Streams
     if hasattr(edge, 'chainlink_divergence') and edge.chainlink_divergence is not None:
         div = edge.chainlink_divergence
         if abs(div) > 0.03:
             warn = " ⚠️" if abs(div) > 0.08 else ""
             text += f"🔗 Chainlink vs Binance: {div:+.3f}%{warn}\n"
+    
+    # Show resolution source
+    if hasattr(m, 'resolution_source') and m.resolution_source:
+        source_labels = {
+            "chainlink_streams": "🔗 Chainlink Data Streams",
+            "chainlink": "🔗 Chainlink",
+            "binance": "📊 Binance",
+        }
+        label = source_labels.get(m.resolution_source, m.resolution_source)
+        text += f"⚖️ Resolves via: {label}\n"
     
     text += "\n"
     
