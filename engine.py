@@ -203,7 +203,11 @@ def scan_loop():
                 
                 # ── Detect edge ─────────────────────────────────────────────
                 edge = edge_detector.calculate_edge(market)
-                if not edge or not edge.is_tradeable:
+                if not edge:
+                    continue
+                if not edge.is_tradeable:
+                    print(f"[engine] Edge found but not tradeable: {market.coin} {market.timeframe} "
+                          f"{edge.direction} edge={edge.edge_pp:+.1f}pp conf={edge.confidence:.0%}")
                     continue
                 
                 # ── Deduplicate opportunities ────────────────────────────────
