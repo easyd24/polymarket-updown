@@ -82,10 +82,12 @@ def get_usdc_balance():
         return -1
 
 
-def get_live_price(token_id):
+def get_live_price(token_id, slug=None, direction=None):
     """Get the live midpoint price from the CLOB orderbook.
     
     Returns (mid_price, best_bid, best_ask, spread_pct) or (None, ...) on error.
+    Falls back to Gamma API when orderbook spread > 50% (thin markets).
+    Pass slug + direction for accurate Gamma fallback (Up=index 0, Down=index 1).
     """
     import httpx
     try:
@@ -105,6 +107,13 @@ def get_live_price(token_id):
         if best_bid and best_ask:
             mid = (best_bid + best_ask) / 2
             spread_pct = (best_ask - best_bid) / mid * 100 if mid > 0 else 999
+            
+            # Thin market fallback: spread > 50% means orderbook is unreliable
+            if spread_pct > 50:
+                gamma_mid, gamma_bid, gamma_ask = _gamma_fallback_price(token_id, slug=slug, direction=direction)
+                if gamma_mid is not None:
+                    return gamma_mid, gamma_bid, gamma_ask, 0.0
+            
             return mid, best_bid, best_ask, spread_pct
         
         if best_bid:
@@ -112,10 +121,66 @@ def get_live_price(token_id):
         if best_ask:
             return best_ask, None, best_ask, 999
         
+        # No bids or asks — try Gamma fallback
+        gamma_mid, gamma_bid, gamma_ask = _gamma_fallback_price(token_id, slug=slug, direction=direction)
+        if gamma_mid is not None:
+            return gamma_mid, gamma_bid, gamma_ask, 0.0
+        
         return None, None, None, None
     except Exception as e:
         print(f"[trader] Price fetch error: {e}")
         return None, None, None, None
+
+
+def _gamma_fallback_price(token_id, slug=None, direction=None):
+    """Fallback: get price from Gamma API when CLOB orderbook is thin.
+    
+    Uses slug-based lookup (more reliable than token_id matching).
+    Direction determines which outcome index to use: Up=0, Down=1.
+    
+    Returns (mid, bid, ask) or (None, None, None).
+    """
+    import httpx
+    try:
+        # Prefer slug-based lookup — token IDs may be truncated
+        params = {"limit": 1}
+        if slug:
+            params["slug"] = slug
+        else:
+            params["clob_token_ids"] = token_id
+        
+        resp = httpx.get(
+            "https://gamma-api.polymarket.com/markets",
+            params=params,
+            timeout=10,
+        )
+        markets = resp.json()
+        if not markets:
+            return None, None, None
+        
+        m = markets[0]
+        outcome_prices = m.get("outcomePrices")
+        if outcome_prices:
+            # outcomePrices is a JSON string list like '["0.63", "0.37"]'
+            if isinstance(outcome_prices, str):
+                import json
+                outcome_prices = json.loads(outcome_prices)
+            
+            # Determine outcome index: Up=0, Down=1
+            idx = 0 if (direction or "Up") == "Up" else 1
+            
+            price = float(outcome_prices[idx])
+            
+            # bestBid/bestAsk from Gamma are for the full market, not per-outcome
+            # Use outcomePrices directly as the most reliable source
+            bid = float(m.get("bestBid", price)) if idx == 0 else float(m.get("bestAsk", price))
+            ask = float(m.get("bestAsk", price)) if idx == 0 else float(m.get("bestBid", price))
+            return price, bid, ask
+        
+        return None, None, None
+    except Exception as e:
+        print(f"[trader] Gamma fallback error: {e}")
+        return None, None, None
 
 
 def place_order(token_id, side, price, amount_usd, max_slippage_pct=3.0, 

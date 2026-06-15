@@ -374,13 +374,14 @@ def get_live_pnl():
         amount_usd = pos.get("amount_usd", 0)
         shares = pos.get("shares", 0)
         token_id = pos.get("token_id", "")
+        direction = pos.get("direction", "Up")
         
         current_price = None
         unrealized_pnl = None
         pnl_pct = None
         
         if token_id:
-            mid, bid, ask, spread = get_live_price(token_id)
+            mid, bid, ask, spread = get_live_price(token_id, slug=slug, direction=direction)
             if mid is not None:
                 current_price = mid
                 # PnL = (current_price - entry_price) * shares
