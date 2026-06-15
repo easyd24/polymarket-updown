@@ -185,7 +185,8 @@ def _estimate_p_up(change_pct: float, momentum: dict, timeframe: str,
     
     # ── Momentum reinforcement ──────────────────────────────────────────────
     # If recent momentum agrees with the move, boost it slightly.
-    # If momentum disagrees (mean reversion territory), reduce it.
+    # If momentum disagrees, the signal is weak — a recovering price after
+    # a drop is NOT a strong "Up" signal (or vice versa).
     momentum_dir = momentum.get("direction", "flat")
     momentum_strength = momentum.get("strength", 0)
     
@@ -194,8 +195,9 @@ def _estimate_p_up(change_pct: float, momentum: dict, timeframe: str,
     elif momentum_dir == "down" and change_pct < 0:
         p += 0.02 * momentum_strength
     elif momentum_dir in ("up", "down") and direction_sign != (1.0 if momentum_dir == "up" else -1.0):
-        # Momentum disagrees with the move — reduce confidence
-        p -= 0.01 * momentum_strength
+        # Momentum disagrees with the window change — signal is unreliable
+        # A price that dropped then recovered is NOT a strong directional bet
+        p -= 0.04 * momentum_strength  # 4x penalty vs 2x boost for agreement
     
     # ── Mean reversion (4h and daily only) ────────────────────────────────
     if timeframe in ("4h", "daily") and abs_move > config.MEAN_REVERSION_THRESHOLD * 100:
@@ -258,10 +260,19 @@ def _calculate_confidence(edge_pp: float, momentum: dict,
     
     # ── Momentum strength → confidence ────────────────────────────────────
     strength = momentum.get("strength", 0)
+    momentum_dir = momentum.get("direction", "flat")
     if strength > 0.7:
         confidence += 0.05  # Strong momentum confirms
     elif strength < 0.3:
         confidence -= 0.05  # Weak momentum = uncertain
+    
+    # ── Momentum vs move disagreement → confidence penalty ───────────────
+    # If the short-term trend disagrees with the window change, the edge
+    # is unreliable. E.g. price dropped 0.7% since window open but is now
+    # recovering — neither direction is a confident bet.
+    move_direction = "up" if change_pct > 0 else "down"
+    if momentum_dir in ("up", "down") and momentum_dir != move_direction:
+        confidence -= 0.10  # Significant confidence penalty for disagreement
     
     # ── Volatility → confidence ───────────────────────────────────────────
     vol = momentum.get("volatility", 0)

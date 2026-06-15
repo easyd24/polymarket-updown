@@ -381,7 +381,8 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
         f"💰 Polymarket: Up {_fmt_price(m.up_price)} | Down {_fmt_price(m.down_price)}\n"
         f"🎯 Our estimate: P(Up) = {_fmt_pct(edge.estimated_true_prob)}\n"
         f"📐 Edge: {edge.edge_pp:+.1f}pp → Buy *{edge.direction}*\n"
-        f"📊 Momentum: {edge.momentum_direction} ({edge.momentum_pct:+.2f}%)\n"
+        f"📉 Change since open: {edge.momentum_pct:+.2f}%\n"
+        f"📈 Short-term trend: {edge.momentum_direction}\n"
         f"🔬 Confidence: {_fmt_pct(edge.confidence)}\n"
     )
     
