@@ -119,20 +119,38 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     trades = get_recent_trades(limit=5)
     
+    # Build lookup: slug → live PnL data for unresolved trades
+    live_pnl_by_slug = {}
+    if live_pnls:
+        for lp in live_pnls:
+            live_pnl_by_slug[lp["slug"]] = lp
+    
     text += f"\n📜 *Recent Trades*\n\n"
     if not trades:
         text += "No trades yet\n"
     else:
         for t in trades:
             pnl = t.get('pnl')
+            result = t.get('result', 'pending')
+            slug = t.get('market_slug', '')
             if pnl is not None:
                 pnl_str = f"+{_fmt_usd(pnl)}" if pnl >= 0 else _fmt_usd(pnl)
+            elif result == 'pending' and slug in live_pnl_by_slug:
+                # Unresolved — show live PnL from orderbook
+                lp = live_pnl_by_slug[slug]
+                if lp.get("unrealized_pnl") is not None:
+                    upnl = lp["unrealized_pnl"]
+                    emoji = "🟢" if upnl >= 0 else "🔴"
+                    pct = f" ({lp['pnl_pct']:+.0f}%)" if lp.get("pnl_pct") is not None else ""
+                    pnl_str = f"{emoji}{'+' if upnl >= 0 else ''}{_fmt_usd(upnl)}{pct}"
+                else:
+                    pnl_str = "⏳ price unavailable"
             else:
                 pnl_str = "pending"
             text += (
                 f"• {t['coin'].upper()} {t['timeframe']} "
                 f"{t['direction']} @ {_fmt_price(t['price'])} → "
-                f"{t.get('result', 'pending')} {pnl_str}\n"
+                f"{result} {pnl_str}\n"
             )
     
     await update.message.reply_text(text, parse_mode="Markdown")
