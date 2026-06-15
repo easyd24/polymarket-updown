@@ -90,7 +90,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show_main_menu(update)
 
 
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _show_status(target):
     """Show open positions with live PnL and recent trades."""
     from engine import get_open_positions, get_recent_trades, get_live_pnl
     
@@ -174,7 +174,21 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{result} {pnl_str}\n"
             )
     
-    await update.message.reply_text(text, parse_mode="Markdown")
+    buttons = [[InlineKeyboardButton("← Back", callback_data="menu_back")]]
+    
+    if hasattr(target, 'edit_message_text'):
+        await target.edit_message_text(
+            text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown"
+        )
+    else:
+        await target.message.reply_text(
+            text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown"
+        )
+
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show open positions with live PnL and recent trades."""
+    await _show_status(update)
 
 
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,7 +210,7 @@ async def cmd_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "menu_series":
         await _show_series_menu(query)
     elif data == "menu_status":
-        await cmd_status(update, context)
+        await _show_status(query)
     elif data == "menu_autotrade":
         await _show_autotrade_menu(query)
     elif data == "menu_history":
