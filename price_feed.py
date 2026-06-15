@@ -237,7 +237,7 @@ def _ws_loop():
             coins = {"btc", "eth"}  # Default
         
         streams = "/".join(f"{BINANCE_SYMBOLS[c]}@trade" for c in coins)
-        url = f"{config.BINANCE_WS_URL}/{streams}"
+        url = f"{config.BINANCE_WS_URL}?streams={streams}"
         
         while _ws_running:
             try:
