@@ -342,7 +342,7 @@ def _place_trade(edge: EdgeResult):
             "amount_usd": amount,
             "shares": result.get("shares", int(amount / price) if price > 0 else 0),
             "token_id": market.up_token_id if edge.direction == "Up" else market.down_token_id,
-            "time_remaining": market.time_remaining_str,
+            "end_date": market.end_date.isoformat() if market.end_date else None,
             "order_id": result.get("order_id", ""),
             "opened_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -376,6 +376,31 @@ def get_live_pnl():
         token_id = pos.get("token_id", "")
         direction = pos.get("direction", "Up")
         
+        # Calculate live time remaining
+        time_remaining_str = "?"
+        end_date_iso = pos.get("end_date")
+        if end_date_iso:
+            try:
+                end_dt = datetime.fromisoformat(end_date_iso)
+                remaining = (end_dt - datetime.now(timezone.utc)).total_seconds()
+                if remaining > 0:
+                    h = int(remaining // 3600)
+                    m = int((remaining % 3600) // 60)
+                    s = int(remaining % 60)
+                    if h > 0:
+                        time_remaining_str = f"{h}h {m}m"
+                    elif m > 0:
+                        time_remaining_str = f"{m}m {s}s"
+                    else:
+                        time_remaining_str = f"{s}s"
+                else:
+                    time_remaining_str = "resolved"
+            except (ValueError, TypeError):
+                pass
+        # Fallback to legacy static field
+        if time_remaining_str == "?" and "time_remaining" in pos:
+            time_remaining_str = pos["time_remaining"]
+        
         current_price = None
         unrealized_pnl = None
         pnl_pct = None
@@ -402,7 +427,7 @@ def get_live_pnl():
             "amount_usd": amount_usd,
             "unrealized_pnl": unrealized_pnl,
             "pnl_pct": pnl_pct,
-            "time_remaining": pos.get("time_remaining", "?"),
+            "time_remaining": time_remaining_str,
             "paper_trade": pos.get("order_id", "").startswith("PAPER"),
         })
     
