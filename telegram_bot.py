@@ -278,6 +278,20 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
     else:
         text += f"🤖 Auto-trading: OFF\n"
     
+    # Build inline keyboard (Buy button when auto-trade is off)
+    reply_markup = None
+    if not _auto_trade and edge.is_tradeable:
+        price_str = _fmt_price(getattr(m, f'{edge.direction.lower()}_price'))
+        button = {
+            "inline_keyboard": [[
+                {
+                    "text": f"Buy {edge.direction} @ {price_str}",
+                    "callback_data": f"buy_{m.slug}_{edge.direction.lower()}"
+                }
+            ]]
+        }
+        reply_markup = json.dumps(button)
+    
     # Send via direct HTTP POST (thread-safe, no event loop needed)
     try:
         import httpx
@@ -287,6 +301,8 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
             "text": text,
             "parse_mode": "Markdown",
         }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         resp = httpx.post(url, json=payload, timeout=10)
         if resp.status_code == 200:
             print(f"[telegram_bot] Alert sent: {m.coin.upper()} {m.timeframe} {edge.direction}")
