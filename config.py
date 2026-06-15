@@ -44,8 +44,8 @@ SERIES = {
 }
 
 # ── Edge Detection Parameters ─────────────────────────────────────────────────
-MIN_EDGE_PP = 8              # Minimum edge in percentage points (8pp to cover 7% taker fee)
-MIN_CONFIDENCE = 0.85        # Minimum confidence in edge estimate
+MIN_EDGE_PP = 10             # Minimum edge in percentage points (need 10pp to be worth it)
+MIN_CONFIDENCE = 0.55         # Minimum confidence in edge estimate (was 0.85, now realistic)
 MOMENTUM_LOOKBACK = 300      # Seconds of lookback for momentum calc
 MOMENTUM_DECAY = 0.95        # Exponential decay for older price data
 MEAN_REVERSION_THRESHOLD = 0.02  # 2% move triggers mean reversion check (4h/daily)
