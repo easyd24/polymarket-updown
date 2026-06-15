@@ -379,6 +379,7 @@ def get_live_pnl():
         # Calculate live time remaining
         time_remaining_str = "?"
         end_date_iso = pos.get("end_date")
+        likely_resolved = False
         if end_date_iso:
             try:
                 end_dt = datetime.fromisoformat(end_date_iso)
@@ -395,6 +396,7 @@ def get_live_pnl():
                         time_remaining_str = f"{s}s"
                 else:
                     time_remaining_str = "resolved"
+                    likely_resolved = True
             except (ValueError, TypeError):
                 pass
         # Fallback to legacy static field
@@ -408,6 +410,9 @@ def get_live_pnl():
         if token_id:
             mid, bid, ask, spread = get_live_price(token_id, slug=slug, direction=direction)
             if mid is not None:
+                # Detect likely resolution: price at 95¢+ with no bids = resolved market
+                if mid >= 0.95 and bid is None:
+                    likely_resolved = True
                 current_price = mid
                 # PnL = (current_price - entry_price) * shares
                 # For paper: shares = amount_usd / entry_price
@@ -429,39 +434,73 @@ def get_live_pnl():
             "pnl_pct": pnl_pct,
             "time_remaining": time_remaining_str,
             "paper_trade": pos.get("order_id", "").startswith("PAPER"),
+            "likely_resolved": likely_resolved,
         })
     
     return results
 
 
 def _check_positions(markets: list[Market]):
-    """Check open positions for resolution."""
+    """Check open positions for resolution.
+    
+    Uses stored end_date if market is no longer in discovered list
+    (resolved markets get dropped from the scan). Uses live price
+    to determine outcome for better accuracy.
+    """
     global _daily_pnl
     
     resolved = []
     for slug, pos in list(_open_positions.items()):
-        # Find matching market
+        # Get end_date from stored position or discovered market
+        end_date = None
         market = next((m for m in markets if m.slug == slug), None)
-        if not market:
+        if market and market.end_date:
+            end_date = market.end_date
+        elif pos.get("end_date"):
+            try:
+                end_date = datetime.fromisoformat(pos["end_date"])
+            except (ValueError, TypeError):
+                pass
+        
+        if not end_date:
             continue
         
         # Check if market has expired
-        if market.end_date and market.end_date < datetime.now(timezone.utc):
-            # Market resolved — determine outcome
-            up_won = market.up_price > market.down_price  # Simplified
+        if end_date <= datetime.now(timezone.utc):
+            # Market resolved — determine outcome from live price
+            # Use the last known price from the market or position
+            direction = pos.get("direction", "Up")
+            entry_price = pos.get("price", 0)
+            amount_usd = pos.get("amount_usd", 0)
+            shares = pos.get("shares", 0) or (int(amount_usd / entry_price) if entry_price > 0 else 0)
             
-            if pos["direction"] == "Up" and up_won:
-                pnl = pos["amount_usd"] / pos["price"] - pos["amount_usd"]
-            elif pos["direction"] == "Down" and not up_won:
-                pnl = pos["amount_usd"] / pos["price"] - pos["amount_usd"]
+            # Try to get final price from market or Gamma API
+            final_price = None
+            if market:
+                final_price = market.up_price if direction == "Up" else market.down_price
+            
+            # Use Gamma API for resolved markets not in current scan
+            if final_price is None:
+                from trader import get_live_price
+                token_id = pos.get("token_id", "")
+                if token_id:
+                    mid, _, _, _ = get_live_price(token_id, slug=slug, direction=direction)
+                    if mid is not None:
+                        final_price = mid
+            
+            # Determine win/loss: price >= 0.90 means our side won
+            won = final_price is not None and final_price >= 0.90
+            
+            if won:
+                pnl = (final_price or 1.0) * shares - amount_usd
             else:
-                pnl = -pos["amount_usd"]
+                pnl = -amount_usd
             
             # Update trade history
             for t in _trade_history:
                 if t.get("market_slug") == slug and not t.get("result"):
-                    t["result"] = "won" if pnl > 0 else "lost"
-                    t["pnl"] = pnl
+                    t["result"] = "won" if won else "lost"
+                    t["pnl"] = round(pnl, 2)
                     t["resolved_at"] = datetime.now(timezone.utc).isoformat()
             
             _daily_pnl += pnl

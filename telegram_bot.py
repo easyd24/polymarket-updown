@@ -97,11 +97,23 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for lp in live_pnls:
             direction_emoji = "📈" if lp["direction"] == "Up" else "📉"
             paper_tag = "📝" if lp["paper_trade"] else "💰"
+            resolved = lp.get("likely_resolved", False)
+            status_tag = " ✅" if resolved else ""
             text += (
-                f"{direction_emoji} {lp['coin'].upper()} {lp['timeframe']} {paper_tag}\n"
+                f"{direction_emoji} {lp['coin'].upper()} {lp['timeframe']} {paper_tag}{status_tag}\n"
                 f"  {lp['direction']} @ {_fmt_price(lp['entry_price'])}"
             )
-            if lp["current_price"] is not None:
+            if resolved and lp["current_price"] is not None:
+                # Likely resolved — show as win/loss outcome, not live price
+                if lp["unrealized_pnl"] is not None:
+                    pnl = lp["unrealized_pnl"]
+                    total_unrealized += pnl
+                    emoji = "🟢" if pnl >= 0 else "🔴"
+                    pct = f" ({lp['pnl_pct']:+.0f}%)" if lp["pnl_pct"] is not None else ""
+                    text += f" → {'won' if pnl >= 0 else 'lost'}\n  {emoji} PnL: {'+' if pnl >= 0 else ''}{_fmt_usd(pnl)}{pct}"
+                else:
+                    text += " → resolved"
+            elif lp["current_price"] is not None:
                 text += f" → now {_fmt_price(lp['current_price'])}"
                 if lp["unrealized_pnl"] is not None:
                     pnl = lp["unrealized_pnl"]
