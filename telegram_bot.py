@@ -46,8 +46,8 @@ def _fmt_pct(pct: float) -> str:
 
 # ── Command Handlers ──────────────────────────────────────────────────────────
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show status and main menu."""
+async def _show_main_menu(target):
+    """Build and show the main menu. target can be update or query."""
     balance = _get_balance()
     
     stats = eng_module._stats
@@ -78,7 +78,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
     ])
     
-    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    # Support both new message (cmd_start) and edit (callback back button)
+    if hasattr(target, 'edit_message_text'):
+        await target.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    else:
+        await target.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show status and main menu."""
+    await _show_main_menu(update)
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,6 +205,8 @@ async def cmd_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _toggle_series(query, data)
     elif data.startswith("autotrade_"):
         await _toggle_autotrade(query, data)
+    elif data == "menu_back":
+        await _show_main_menu(query)
     elif data.startswith("buy_"):
         await _handle_buy(query, data)
 
