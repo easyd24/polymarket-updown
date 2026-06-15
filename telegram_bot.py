@@ -339,8 +339,16 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
         f"📐 Edge: {edge.edge_pp:+.1f}pp → Buy *{edge.direction}*\n"
         f"📊 Momentum: {edge.momentum_direction} ({edge.momentum_pct:+.2f}%)\n"
         f"🔬 Confidence: {_fmt_pct(edge.confidence)}\n"
-        f"\n"
     )
+    
+    # Show Chainlink divergence for 15m/1h markets (they resolve via Chainlink)
+    if hasattr(edge, 'chainlink_divergence') and edge.chainlink_divergence is not None:
+        div = edge.chainlink_divergence
+        if abs(div) > 0.03:
+            warn = " ⚠️" if abs(div) > 0.08 else ""
+            text += f"🔗 Chainlink vs Binance: {div:+.3f}%{warn}\n"
+    
+    text += "\n"
     
     if _auto_trade and edge.is_tradeable:
         text += f"🤖 Auto-trading: {'ON (Paper 📝)' if _paper_trade else 'ON (Live 💰)'}\n"

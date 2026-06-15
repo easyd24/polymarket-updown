@@ -3,6 +3,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import config
 from typing import Optional
 
 
@@ -74,11 +75,12 @@ class EdgeResult:
     momentum_pct: float = 0.0   # Price change since window start
     momentum_direction: str = "flat"  # "up", "down", "flat"
     volatility: float = 0.0     # Realized volatility
+    chainlink_divergence: float | None = None  # % diff between Chainlink and Binance
 
     @property
     def is_tradeable(self) -> bool:
         """Whether this edge meets minimum thresholds."""
-        return self.edge_pp >= 8 and self.confidence >= 0.85
+        return self.edge_pp >= config.MIN_EDGE_PP and self.confidence >= config.MIN_CONFIDENCE
 
 
 @dataclass

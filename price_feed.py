@@ -310,6 +310,92 @@ def stop_price_feed():
     print("[price_feed] Binance WebSocket price feed stopped")
 
 
+# ── Chainlink Oracle Prices ──────────────────────────────────────────────────
+# Chainlink BTC/USD and ETH/USD feeds on Ethereum mainnet
+# 15m & 1h Up/Down markets resolve via Chainlink, not Binance
+CHAINLINK_FEEDS = {
+    "btc": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+    "eth": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+}
+CHAINLINK_DECIMALS = {"btc": 8, "eth": 8}
+_CHAINLINK_RPC = "https://ethereum-rpc.publicnode.com"
+_CHAINLINK_SELECTOR = "0x50d25bcd"  # latestRoundData() → we use the answer field
+_chainlink_cache = {}  # {coin: (price, timestamp)}
+_chainlink_cache_ttl = 30  # seconds
+
+
+def get_chainlink_price(coin: str) -> tuple[float, float] | None:
+    """Get Chainlink oracle price and divergence from Binance.
+    
+    Returns (chainlink_price, divergence_pct) or None on error.
+    divergence_pct is positive when Chainlink > Binance.
+    """
+    global _chainlink_cache
+    
+    now = time.time()
+    
+    # Check cache
+    if coin in _chainlink_cache:
+        cached_price, cached_ts = _chainlink_cache[coin]
+        if now - cached_ts < _chainlink_cache_ttl:
+            binance_price = get_price(coin)
+            if binance_price > 0:
+                divergence = (cached_price / binance_price - 1) * 100
+                return (cached_price, divergence)
+    
+    feed = CHAINLINK_FEEDS.get(coin)
+    if not feed:
+        return None
+    
+    try:
+        import httpx
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "eth_call",
+            "params": [{"to": feed, "data": _CHAINLINK_SELECTOR}, "latest"],
+            "id": 1,
+        }
+        resp = httpx.post(_CHAINLINK_RPC, json=payload, timeout=10)
+        data = resp.json()
+        result = data.get("result", "")
+        
+        if not result or len(result) < 10:
+            return None
+        
+        # Parse Chainlink response
+        # latestRoundData returns: roundId, answer, startedAt, updatedAt, answeredInRound
+        # Each is a 32-byte word. For single-word results, it's just the answer.
+        decimals = CHAINLINK_DECIMALS.get(coin, 8)
+        
+        if len(result) > 130:
+            # Full 5-word response — answer is word 1 (bytes 32-63)
+            hex_str = result[2:] if result.startswith("0x") else result
+            answer = int(hex_str[64:128], 16)
+        else:
+            # Single word response
+            answer = int(result, 16)
+        
+        chainlink_price = answer / (10 ** decimals)
+        
+        if chainlink_price <= 0:
+            return None
+        
+        # Cache it
+        _chainlink_cache[coin] = (chainlink_price, now)
+        
+        # Compare with Binance
+        binance_price = get_price(coin)
+        if binance_price <= 0:
+            return (chainlink_price, 0.0)
+        
+        divergence = (chainlink_price / binance_price - 1) * 100
+        return (chainlink_price, divergence)
+    
+    except Exception as e:
+        print(f"[price_feed] Chainlink error for {coin}: {e}")
+        return None
+
+
 if __name__ == "__main__":
     # Test price feed
     print("Testing Binance price feed...")

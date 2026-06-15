@@ -62,6 +62,15 @@ def calculate_edge(market: Market) -> EdgeResult | None:
         change_since_start_pct = momentum["change_pct"]
         price_to_beat = current_price / (1 + change_since_start_pct / 100)
     
+    # ── Chainlink oracle divergence ────────────────────────────────────────
+    # 15m & 1h markets resolve via Chainlink, not Binance.
+    # If Chainlink and Binance diverge, our edge calculation may be wrong.
+    chainlink_result = price_feed.get_chainlink_price(coin)
+    chainlink_divergence = 0.0  # % difference: positive = Chainlink > Binance
+    
+    if chainlink_result:
+        chainlink_price, chainlink_divergence = chainlink_result
+    
     # ── Minimum move threshold ────────────────────────────────────────────
     # Small moves are noise, not signal. Don't fire on sub-0.5% drift.
     MIN_MOVE_PCT = {
@@ -130,6 +139,7 @@ def calculate_edge(market: Market) -> EdgeResult | None:
         momentum_pct=round(change_since_start_pct, 2),
         momentum_direction=momentum["direction"],
         volatility=momentum["volatility"],
+        chainlink_divergence=round(chainlink_divergence, 4),
     )
 
 
@@ -252,6 +262,19 @@ def _calculate_confidence(edge_pp: float, momentum: dict,
         confidence += 0.03  # Healthy, moderate volatility
     elif vol >= 0.02:
         confidence -= 0.08  # Wild volatility — very uncertain
+    
+    # ── Chainlink oracle divergence → confidence ──────────────────────────
+    # If Binance and Chainlink disagree, our edge is less reliable.
+    # 15m/1h markets resolve via Chainlink — divergence = risk.
+    if abs(chainlink_divergence) > 0.15:
+        # >0.15% divergence: significant risk that resolution won't match our signal
+        confidence -= 0.15
+    elif abs(chainlink_divergence) > 0.08:
+        # 0.08-0.15%: moderate risk
+        confidence -= 0.08
+    elif abs(chainlink_divergence) > 0.03:
+        # 0.03-0.08%: small risk
+        confidence -= 0.03
     
     # ── Market liquidity → confidence ─────────────────────────────────────
     if market.liquidity >= 5000:
