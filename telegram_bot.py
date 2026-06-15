@@ -82,24 +82,42 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show open positions and recent trades."""
-    from engine import get_open_positions, get_recent_trades
+    """Show open positions with live PnL and recent trades."""
+    from engine import get_open_positions, get_recent_trades, get_live_pnl
     
-    positions = get_open_positions()
-    trades = get_recent_trades(limit=5)
+    # Fetch live PnL for open positions
+    live_pnls = get_live_pnl()
     
     text = "📊 *Open Positions*\n\n"
     
-    if not positions:
+    if not live_pnls:
         text += "No open positions\n"
     else:
-        for pos in positions:
+        total_unrealized = 0
+        for lp in live_pnls:
+            direction_emoji = "📈" if lp["direction"] == "Up" else "📉"
+            paper_tag = "📝" if lp["paper_trade"] else "💰"
             text += (
-                f"• {pos['coin'].upper()} {pos['timeframe']} — "
-                f"{pos['direction']} @ {_fmt_price(pos['price'])}\n"
-                f"  Staked: {_fmt_usd(pos['amount_usd'])} | "
-                f"Time left: {pos.get('time_remaining', '?')}\n"
+                f"{direction_emoji} {lp['coin'].upper()} {lp['timeframe']} {paper_tag}\n"
+                f"  {lp['direction']} @ {_fmt_price(lp['entry_price'])}"
             )
+            if lp["current_price"] is not None:
+                text += f" → now {_fmt_price(lp['current_price'])}"
+                if lp["unrealized_pnl"] is not None:
+                    pnl = lp["unrealized_pnl"]
+                    total_unrealized += pnl
+                    emoji = "🟢" if pnl >= 0 else "🔴"
+                    pct = f" ({lp['pnl_pct']:+.0f}%)" if lp["pnl_pct"] is not None else ""
+                    text += f"\n  {emoji} PnL: {'+' if pnl >= 0 else ''}{_fmt_usd(pnl)}{pct}"
+            else:
+                text += "\n  ⏳ Price unavailable"
+            text += f"\n  Staked: {_fmt_usd(lp['amount_usd'])} | Time: {lp['time_remaining']}\n\n"
+        
+        if total_unrealized != 0:
+            emoji = "🟢" if total_unrealized >= 0 else "🔴"
+            text += f"{emoji} *Total unrealized: {'+' if total_unrealized >= 0 else ''}{_fmt_usd(total_unrealized)}*\n"
+    
+    trades = get_recent_trades(limit=5)
     
     text += f"\n📜 *Recent Trades*\n\n"
     if not trades:

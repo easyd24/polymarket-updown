@@ -340,6 +340,8 @@ def _place_trade(edge: EdgeResult):
             "direction": edge.direction,
             "price": price,
             "amount_usd": amount,
+            "shares": result.get("shares", int(amount / price) if price > 0 else 0),
+            "token_id": market.up_token_id if edge.direction == "Up" else market.down_token_id,
             "time_remaining": market.time_remaining_str,
             "order_id": result.get("order_id", ""),
             "opened_at": datetime.now(timezone.utc).isoformat(),
@@ -357,6 +359,53 @@ def _place_trade(edge: EdgeResult):
                 send_trade_confirmation(edge, amount, price, is_paper, result)
             except Exception as e:
                 print(f"[engine] Trade confirmation error: {e}")
+
+
+def get_live_pnl():
+    """Calculate unrealized PnL for all open positions using live orderbook prices.
+    
+    Returns list of dicts with position info + live PnL.
+    """
+    from trader import get_live_price
+    results = []
+    
+    for slug, pos in _open_positions.items():
+        entry_price = pos.get("price", 0)
+        amount_usd = pos.get("amount_usd", 0)
+        shares = pos.get("shares", 0)
+        token_id = pos.get("token_id", "")
+        
+        current_price = None
+        unrealized_pnl = None
+        pnl_pct = None
+        
+        if token_id:
+            mid, bid, ask, spread = get_live_price(token_id)
+            if mid is not None:
+                current_price = mid
+                # PnL = (current_price - entry_price) * shares
+                # For paper: shares = amount_usd / entry_price
+                if shares <= 0 and entry_price > 0:
+                    shares = int(amount_usd / entry_price)
+                unrealized_pnl = (current_price - entry_price) * shares
+                if amount_usd > 0:
+                    pnl_pct = (unrealized_pnl / amount_usd) * 100
+        
+        results.append({
+            "slug": slug,
+            "coin": pos.get("coin", "?"),
+            "timeframe": pos.get("timeframe", "?"),
+            "direction": pos.get("direction", "?"),
+            "entry_price": entry_price,
+            "current_price": current_price,
+            "amount_usd": amount_usd,
+            "unrealized_pnl": unrealized_pnl,
+            "pnl_pct": pnl_pct,
+            "time_remaining": pos.get("time_remaining", "?"),
+            "paper_trade": pos.get("order_id", "").startswith("PAPER"),
+        })
+    
+    return results
 
 
 def _check_positions(markets: list[Market]):
