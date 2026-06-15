@@ -186,6 +186,7 @@ def scan_loop():
                 print(f"[engine] Found {len(markets)} active markets")
             
             # ── Scan each market for edge ────────────────────────────────────
+            scanned = 0
             for market in markets:
                 series_config = config.SERIES.get(market.series_slug, {})
                 if not series_config.get("enabled", False):
@@ -201,6 +202,7 @@ def scan_loop():
                 if market.time_remaining_pct < (1 - max_pct):
                     continue  # Too late in the window
                 
+                scanned += 1
                 # ── Detect edge ─────────────────────────────────────────────
                 edge = edge_detector.calculate_edge(market)
                 if not edge:
@@ -240,6 +242,11 @@ def scan_loop():
             
             # ── Check open positions for resolution ─────────────────────────
             _check_positions(markets)
+            
+            if scanned > 0:
+                print(f"[engine] Scanned {scanned} markets in-window this cycle")
+            else:
+                print(f"[engine] No markets in trade window this cycle (total: {len(markets)})")
             
             # ── Sleep based on most aggressive enabled series ───────────────
             min_interval = min(s.get("scan_interval", 60) 
