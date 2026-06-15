@@ -30,13 +30,13 @@ def calculate_edge(market: Market) -> EdgeResult | None:
     timeframe = market.timeframe
     
     # ── Skip illiquid markets ──────────────────────────────────────────────
-    if market.volume_24h < config.MIN_VOLUME_24H:
+    # For Up/Down markets, liquidity is a better filter than volume
+    # (future windows have $0 volume but $10k+ liquidity from AMMs)
+    min_liq = config.SERIES.get(market.series_slug, {}).get("min_liquidity", 500)
+    if market.liquidity < min_liq:
         return None
-    if market.liquidity < config.SERIES.get(market.series_slug, {}).get("min_liquidity", 100):
-        return None
-    # Skip markets where both sides are at 50/50 (no market opinion yet)
-    if 0.48 < market.up_price < 0.52 and market.volume_24h < 500:
-        return None
+    if market.volume_24h < 100 and market.liquidity < 1000:
+        return None  # Truly dead market — no volume AND no liquidity
     
     # ── Get exchange data ─────────────────────────────────────────────────
     current_price = price_feed.get_price(coin)
