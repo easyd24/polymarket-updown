@@ -144,6 +144,8 @@ async def cmd_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _toggle_series(query, data)
     elif data.startswith("autotrade_"):
         await _toggle_autotrade(query, data)
+    elif data.startswith("buy_"):
+        await _handle_buy(query, data)
 
 
 async def _show_series_menu(query):
@@ -239,6 +241,73 @@ async def _toggle_autotrade(query, data):
         eng_module._paper_trade = False
     
     await _show_autotrade_menu(query)
+
+
+async def _handle_buy(query, data):
+    """Handle Buy button press from an alert — paper trade only for now."""
+    import engine as eng
+    import market_discovery
+    
+    parts = data.split("_", 2)  # buy_{slug}_{direction}
+    if len(parts) < 3:
+        await query.answer("❌ Invalid action", show_alert=True)
+        return
+    
+    slug = parts[1]
+    direction = parts[2]  # 'up' or 'down'
+    
+    await query.answer(f"📝 Paper trade: Buy {direction.title()}...", show_alert=False)
+    
+    # Find the market
+    markets = market_discovery.discover_markets(force_refresh=False)
+    market = next((m for m in markets if m.slug == slug), None)
+    
+    if not market:
+        await query.edit_message_text("❌ Market expired — try the next alert.")
+        return
+    
+    price = getattr(market, f"{direction}_price")
+    
+    # Place paper trade — $5 default
+    amount = 5.0
+    shares = int(amount / price) if price > 0 else 0
+    order_id = f"paper_{slug}_{direction}_{int(time.time())}"
+    
+    # Record in engine
+    eng._trade_history.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "market_slug": slug,
+        "coin": market.coin,
+        "timeframe": market.timeframe,
+        "direction": direction.title(),
+        "price": price,
+        "amount_usd": amount,
+        "shares": shares,
+        "order_id": order_id,
+        "paper_trade": True,
+    })
+    eng._open_positions[slug] = {
+        "coin": market.coin,
+        "timeframe": market.timeframe,
+        "direction": direction.title(),
+        "price": price,
+        "amount_usd": amount,
+        "time_remaining": market.time_remaining_str,
+        "opened_at": datetime.now(timezone.utc).isoformat(),
+    }
+    eng._save_trade_history()
+    eng._save_positions()
+    eng._stats["trades_placed"] = eng._stats.get("trades_placed", 0) + 1
+    
+    text = (
+        f"✅ *Paper Trade Placed*\n\n"
+        f"📊 {market.coin.upper()} {market.timeframe}\n"
+        f"📈 Buy {direction.title()} @ {_fmt_price(price)}\n"
+        f"💰 {_fmt_usd(amount)} → {shares} shares\n"
+        f"📝 Order: `{order_id[:30]}…`\n\n"
+        f"⏰ Window: {market.time_remaining_str} left"
+    )
+    await query.edit_message_text(text, parse_mode="Markdown")
 
 
 def _get_balance():
