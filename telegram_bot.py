@@ -395,8 +395,10 @@ async def _handle_buy(query, data):
 
 
 def _get_balance():
-    """Get USDC balance (cached)."""
+    """Get USDC balance (cached). Returns mock balance in paper mode."""
     try:
+        if _paper_trade:
+            return 100.0  # $100 mock balance for paper trading
         from trader import get_usdc_balance
         return get_usdc_balance()
     except:
