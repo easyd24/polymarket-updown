@@ -279,10 +279,14 @@ def _place_trade(edge: EdgeResult):
     market = edge.market
     
     # Calculate position size
-    balance = trader.get_usdc_balance()
-    if balance <= 0:
-        print("[engine] Cannot trade — balance unavailable")
-        return
+    if _paper_trade:
+        # Paper mode: use a mock balance so API auth failures don't block trades
+        balance = 100.0  # $100 mock balance for paper trading
+    else:
+        balance = trader.get_usdc_balance()
+        if balance <= 0:
+            print("[engine] Cannot trade — balance unavailable")
+            return
     
     amount = _calculate_position_size(edge, balance)
     
@@ -345,6 +349,14 @@ def _place_trade(edge: EdgeResult):
         _stats_increment("trades_placed")
         print(f"[engine] ✅ Trade placed: {market.coin.upper()} {market.timeframe} "
               f"{edge.direction} @ {price:.2f} for ${amount:.2f}")
+        
+        # Send trade confirmation to Telegram
+        if _alert_callback:
+            try:
+                from telegram_bot import send_trade_confirmation
+                send_trade_confirmation(edge, amount, price, is_paper, result)
+            except Exception as e:
+                print(f"[engine] Trade confirmation error: {e}")
 
 
 def _check_positions(markets: list[Market]):

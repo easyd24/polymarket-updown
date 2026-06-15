@@ -402,6 +402,46 @@ def send_alert_sync(edge: EdgeResult, chat_id: int = None):
         print(f"[telegram_bot] Alert send error: {e}")
 
 
+def send_trade_confirmation(edge, amount_usd: float, price: float, is_paper: bool, result: dict):
+    """Send a trade confirmation message via Telegram (called from engine thread)."""
+    chat_id = config.TELEGRAM_CHAT_ID
+    m = edge.market
+    
+    paper_tag = "📝 PAPER" if is_paper else "💰 LIVE"
+    direction_emoji = "📈" if edge.direction == "Up" else "📉"
+    
+    text = (
+        f"{direction_emoji} *TRADE PLACED* {paper_tag}\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"📊 {m.coin.upper()} {m.timeframe} → *{edge.direction}*\n"
+        f"💵 Size: ${amount_usd:.2f}\n"
+        f"🏷 Price: {price:.2f}¢\n"
+        f"📐 Edge: {edge.edge_pp:+.1f}pp | Conf: {edge.confidence:.0%}\n"
+    )
+    
+    if result:
+        order_id = result.get("order_id", "?")
+        status = result.get("status", "?")
+        shares = result.get("shares", "?")
+        text += f"📋 ID: {order_id} | {shares} shares | {status}\n"
+    
+    try:
+        import httpx
+        url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+        resp = httpx.post(url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            print(f"[telegram_bot] Trade confirmation sent: {m.coin.upper()} {m.timeframe} {edge.direction}")
+        else:
+            print(f"[telegram_bot] Trade confirmation HTTP error: {resp.status_code}")
+    except Exception as e:
+        print(f"[telegram_bot] Trade confirmation error: {e}")
+
+
 # ── Bot Runner ────────────────────────────────────────────────────────────────
 
 def run_bot():
