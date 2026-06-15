@@ -77,7 +77,7 @@ TRADE_HISTORY_FILE = DATA_DIR / 'trade_history.json'
 POSITIONS_FILE = DATA_DIR / 'positions.json'
 
 # ── Auto-Trade ────────────────────────────────────────────────────────────────
-AUTO_TRADE_ENABLED = False    # Default: alerts only, no auto-trading
+AUTO_TRADE_ENABLED = True     # Auto-trading ON (paper mode by default)
 PAPER_TRADE = True           # Default: paper trading (no real orders)
 
 # ── Market Scan ────────────────────────────────────────────────────────────────
