@@ -110,6 +110,7 @@ def calculate_edge(market: Market) -> EdgeResult | None:
         timeframe=timeframe,
         market=market,
         change_pct=change_since_start_pct,
+        chainlink_divergence=chainlink_divergence,
     )
     
     # ── Don't fire if below minimum confidence ────────────────────────────
@@ -215,7 +216,8 @@ def _estimate_p_up(change_pct: float, momentum: dict, timeframe: str,
 
 def _calculate_confidence(edge_pp: float, momentum: dict, 
                           time_remaining_pct: float, timeframe: str,
-                          market: Market, change_pct: float) -> float:
+                          market: Market, change_pct: float,
+                          chainlink_divergence: float = 0.0) -> float:
     """Calculate confidence in the edge estimate.
     
     Confidence is deliberately capped at 85% — we should never be 100%
